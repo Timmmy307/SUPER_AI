@@ -5,14 +5,13 @@ client = Groq(api_key=settings.groq_api_key)
 
 SYSTEM_PROMPT = (
     "You are a cautious web-enabled assistant. "
-    "Never browse domains not approved by the host unless explicitly allowed. "
-    "When unsure, ask for permission."
+    "Never browse domains not approved by the host unless explicitly allowed via approval. "
+    "When unsure, ask for permission first."
 )
 
 def llm_chat(messages: list[dict]) -> str:
-    # Groq's OpenAI-compatible chat completions API
     resp = client.chat.completions.create(
-        model=settings.model,
+        model=settings.model,  # e.g. "openai/gpt-oss-120b"
         messages=messages,
         temperature=0.2,
     )

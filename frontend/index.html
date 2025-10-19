@@ -11,6 +11,7 @@
     .modal { position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; align-items:center; justify-content:center; }
     .modal > div { background:#fff; padding:16px; border-radius:8px; max-width:520px; }
     pre { white-space:pre-wrap; background:#f7f7f7; padding:8px; border-radius:6px; }
+    img { max-width:100%; }
   </style>
 </head>
 <body>
@@ -53,46 +54,38 @@
   </div>
 
 <script>
-const out = (x) => document.getElementById('out').textContent = 
-  (document.getElementById('out').textContent + '\n' + x);
+const outEl = document.getElementById('out');
+const out = (x) => outEl.textContent = outEl.textContent + '\n' + x;
 
 async function shutdown(){
   const t = document.getElementById('adminToken').value;
   const r = await fetch('/admin/shutdown',{method:'POST',headers:{'x-admin-token':t}});
   out('Shutdown: '+r.status);
 }
-
 async function start(){
   const t = document.getElementById('adminToken').value;
   const r = await fetch('/admin/start',{method:'POST',headers:{'x-admin-token':t}});
   out('Start: '+r.status);
 }
-
 async function refreshStatus(){
   const t = document.getElementById('adminToken').value;
   const r = await fetch('/admin/status',{headers:{'x-admin-token':t}});
   out(await r.text());
 }
-
 async function runTask(){
   const goal = document.getElementById('goal').value;
-  const r = await fetch('/task',{method:'POST',headers:{'content-type':'application/json'},
-    body: JSON.stringify({goal})});
-  out(await r.text());
+  const r = await fetch('/task',{method:'POST',headers:{'content-type':'application/json'}, body: JSON.stringify({goal})});
+  out((await r.json()).plan);
 }
-
-// Approval flow helpers
 let approvePending = null;
-
 function showApprove(domain, url){
   approvePending = {domain, url};
   document.getElementById('need').textContent = `Agent requests ${domain}\n${url}`;
   document.getElementById('approveModal').style.display='flex';
 }
-
 async function decide(ok){
   const t = document.getElementById('adminToken').value;
-  if(ok){
+  if(ok && approvePending){
     await fetch('/admin/allow',{method:'POST',
       headers:{'x-admin-token':t,'content-type':'application/json'},
       body: JSON.stringify(approvePending.domain)});
@@ -100,7 +93,6 @@ async function decide(ok){
   document.getElementById('approveModal').style.display='none';
   approvePending = null;
 }
-
 async function browseText(){
   const url = document.getElementById('url').value;
   let r = await fetch(`/browse/text?url=${encodeURIComponent(url)}`);
@@ -111,7 +103,6 @@ async function browseText(){
   }
   out((await r.json()).text.slice(0,1500));
 }
-
 async function browseImage(){
   const url = document.getElementById('urlImg').value;
   let r = await fetch(`/browse/screenshot?url=${encodeURIComponent(url)}`);
@@ -122,7 +113,7 @@ async function browseImage(){
   }
   const blob = await r.blob();
   const imgUrl = URL.createObjectURL(blob);
-  const img = new Image(); img.src = imgUrl; img.style.maxWidth='100%';
+  const img = new Image(); img.src = imgUrl;
   document.body.appendChild(img);
 }
 </script>

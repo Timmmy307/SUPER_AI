@@ -3,10 +3,9 @@ from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
 from readability import Document
 from typing import Tuple
-
 from settings import settings
 
-async def _open(url: str, screenshot_path: str | None) -> Tuple[str, bytes | None]:
+async def _open(url: str, screenshot_path: str | None) -> tuple[str, bytes | None]:
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         ctx = await browser.new_context(
@@ -25,7 +24,6 @@ async def _open(url: str, screenshot_path: str | None) -> Tuple[str, bytes | Non
         return html, img
 
 def extract_readable_text(html: str) -> str:
-    # Try Readability first, fallback to plain text from BeautifulSoup
     try:
         doc = Document(html)
         parsed = BeautifulSoup(doc.summary(html_partial=True), "lxml")
