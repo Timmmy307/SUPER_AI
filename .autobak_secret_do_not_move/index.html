@@ -1,0 +1,404 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Groq Talk — Chat + Voice</title>
+<style>
+  :root {
+    --bg:#0b0c10; --panel:#12141b; --text:#e9eaee; --muted:#a3a8b6;
+    --border:#2a2f3f; --accent:#7aa2ff; --danger:#ff7272; --ok:#37d67a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);height:100vh;display:grid;grid-template-columns:260px 1fr;overflow:hidden;font:14px ui-sans-serif,system-ui,Segoe UI,Roboto,Arial}
+  aside{border-right:1px solid var(--border);background:#0e1016;display:flex;flex-direction:column}
+  .sidebar-head{padding:14px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+  .brand{font-weight:700}
+  .settings-btn{background:transparent;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:8px;cursor:pointer}
+  .chats{flex:1;overflow:auto;padding:8px}
+  .chat-item{padding:10px;border:1px solid var(--border);border-radius:10px;margin:8px 4px;background:var(--panel);cursor:pointer}
+  .chat-item.active{outline:2px solid var(--accent)}
+  .new-chat{margin:8px;display:flex;gap:8px}
+  .btn{cursor:pointer;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:8px 10px}
+  .danger{color:#fff;background:#35151a;border-color:#6e1d1d}
+  main{display:grid;grid-template-rows:1fr auto; height:100vh}
+  .workspace{display:grid;grid-template-columns:1fr 420px; gap:8px; padding:12px; overflow:hidden}
+  .chatlog{border:1px solid var(--border);border-radius:12px;background:var(--panel);overflow:auto;padding:16px}
+  .message{max-width:820px;margin:0 auto 10px;padding:12px 14px;border-radius:12px;border:1px solid var(--border);white-space:pre-wrap}
+  .user{background:#17212b;border-color:#2a415c}
+  .assistant{background:#171a23;border-color:#2b2f45}
+  .meta{font-size:12px;color:var(--muted);margin-bottom:4px}
+  .tools{border:1px solid var(--border);border-radius:12px;background:var(--panel);overflow:auto;padding:12px;height:100%}
+  .tool-block{border:1px dashed var(--border);border-radius:10px;padding:10px;margin-bottom:10px}
+  .inputbar{display:flex;gap:8px;border-top:1px solid var(--border);padding:12px;background:linear-gradient(180deg,#0f1117,#0b0c10)}
+  .grow{flex:1}
+  input,select,textarea{background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:10px}
+  .mic.rec{outline:2px solid var(--danger)}
+  audio{width:100%;max-width:820px;display:block;margin:6px auto}
+  .status{font-size:12px;color:var(--muted);text-align:center;margin-top:4px}
+  .iframe{width:100%;height:280px;border:1px solid var(--border);border-radius:8px}
+  .row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center}
+  .card{background:#0f1117;border:1px solid var(--border);border-radius:12px;padding:16px;min-width:360px;max-width:600px}
+  .card h3{margin:0 0 10px 0}
+</style>
+</head>
+<body>
+  <aside>
+    <div class="sidebar-head">
+      <div class="brand">Groq Talk</div>
+      <button class="settings-btn" id="openSettings">Settings</button>
+    </div>
+    <div class="new-chat">
+      <button class="btn" id="newChat">+ New chat</button>
+      <button class="btn danger" id="deleteChat">Delete</button>
+    </div>
+    <div id="chats" class="chats"></div>
+  </aside>
+
+  <main>
+    <div class="workspace">
+      <div class="chatlog" id="chatlog"></div>
+      <div class="tools">
+        <div class="tool-block">
+          <div class="row">
+            <strong>Web Viewer (on-demand)</strong>
+            <button class="btn" id="stopTask">Stop</button>
+          </div>
+          <div class="row">
+            <input id="url" class="grow" placeholder="https://example.com">
+            <button class="btn" id="go">Open</button>
+          </div>
+          <iframe id="viewer" class="iframe" sandbox="allow-scripts allow-forms allow-popups allow-same-origin"></iframe>
+          <div class="row">
+            <button class="btn" id="record">Start Tab Recording</button>
+          </div>
+          <div id="status" class="status"></div>
+        </div>
+
+        <div class="tool-block">
+          <strong>Owner</strong>
+          <div class="row"><input id="ownerPass" placeholder="Owner password"></div>
+          <div class="row"><input id="cmd" class="grow" placeholder="echo hello"><button class="btn" id="runCmd">Run</button></div>
+          <div class="row"><input id="editFile" placeholder="server.js / index.html" style="width:50%"><button class="btn" id="saveFile">Save file</button></div>
+          <pre id="cmdOut" style="overflow:auto;max-height:150px"></pre>
+          <div class="row"><button class="btn danger" id="stopServer">Stop server</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="inputbar">
+      <button id="mic" class="btn mic" title="Hold to talk">🎙️</button>
+      <input id="prompt" class="grow" placeholder="Message Groq…">
+      <button id="send" class="btn">Send</button>
+    </div>
+  </main>
+
+  <!-- Settings Modal -->
+  <div class="modal" id="settingsModal">
+    <div class="card">
+      <h3>Settings</h3>
+      <div class="row">
+        <label style="width:120px">Model</label>
+        <input id="model" value="llama-3.3-70b-versatile" class="grow">
+      </div>
+      <div class="row">
+        <label style="width:120px">Voice</label>
+        <select id="voice" class="grow">
+          <option>Fritz-PlayAI</option><option>Celeste-PlayAI</option><option>Quinn-PlayAI</option>
+          <option>Gail-PlayAI</option><option>Mason-PlayAI</option><option>Atlas-PlayAI</option>
+        </select>
+      </div>
+      <div class="row">
+        <label style="width:120px">Talk mode</label>
+        <select id="talkMode"><option value="off">Off</option><option value="on">On</option></select>
+      </div>
+      <div class="row">
+        <label style="width:120px">User agent</label>
+        <input id="ua" class="grow" value="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36">
+      </div>
+      <div class="row">
+        <label style="width:120px">Owner password</label>
+        <input id="ownerPassword" value="" placeholder="••••••">
+      </div>
+      <div class="row" style="justify-content:flex-end;gap:8px">
+        <button class="btn" id="testTTS">Test voice</button>
+        <button class="btn" id="closeSettings">Close</button>
+      </div>
+      <div id="settingsNote" class="status"></div>
+    </div>
+  </div>
+
+<script>
+const chatlog = document.getElementById('chatlog');
+const chatsEl = document.getElementById('chats');
+const promptEl = document.getElementById('prompt');
+const sendBtn = document.getElementById('send');
+const micBtn = document.getElementById('mic');
+const openSettings = document.getElementById('openSettings');
+const settingsModal = document.getElementById('settingsModal');
+const closeSettings = document.getElementById('closeSettings');
+const voiceSel = document.getElementById('voice');
+const talkModeSel = document.getElementById('talkMode');
+const modelEl = document.getElementById('model');
+const uaEl = document.getElementById('ua');
+const testTTS = document.getElementById('testTTS');
+const urlEl = document.getElementById('url');
+const goBtn = document.getElementById('go');
+const viewer = document.getElementById('viewer');
+const statusEl = document.getElementById('status');
+const stopTaskBtn = document.getElementById('stopTask');
+const runCmdBtn = document.getElementById('runCmd');
+const cmdEl = document.getElementById('cmd');
+const cmdOut = document.getElementById('cmdOut');
+const ownerPassEl = document.getElementById('ownerPass');
+const newChatBtn = document.getElementById('newChat');
+const delChatBtn = document.getElementById('deleteChat');
+const ownerPasswordSetting = document.getElementById('ownerPassword');
+const saveFileBtn = document.getElementById('saveFile');
+const editFileEl = document.getElementById('editFile');
+const stopServerBtn = document.getElementById('stopServer');
+
+let messages = [];
+let currentChatId = null;
+let controller = null;
+let recStream = null;
+
+const S = JSON.parse(localStorage.getItem('groqTalkSettings') || '{}');
+if (S.model) modelEl.value = S.model;
+if (S.voice) voiceSel.value = S.voice;
+if (S.talkMode) talkModeSel.value = S.talkMode;
+if (S.ua) uaEl.value = S.ua;
+if (S.ownerPassword) ownerPasswordSetting.value = S.ownerPassword;
+renderChats();
+
+function saveSettings(){
+  const obj = {
+    model: modelEl.value,
+    voice: voiceSel.value,
+    talkMode: talkModeSel.value,
+    ua: uaEl.value,
+    ownerPassword: ownerPasswordSetting.value
+  };
+  localStorage.setItem('groqTalkSettings', JSON.stringify(obj));
+  ownerPassEl.value = obj.ownerPassword || '';
+  document.getElementById('settingsNote').textContent = 'Saved.';
+  setTimeout(()=>document.getElementById('settingsNote').textContent='',1200);
+}
+
+function renderChats(){
+  const all = JSON.parse(localStorage.getItem('groqChats') || '[]');
+  chatsEl.innerHTML = '';
+  all.forEach(c => {
+    const div = document.createElement('div');
+    div.className = 'chat-item' + (c.id===currentChatId?' active':'');
+    div.textContent = c.title || 'New chat';
+    div.onclick = ()=>loadChat(c.id);
+    chatsEl.appendChild(div);
+  });
+  if (!currentChatId && all[0]) loadChat(all[0].id);
+}
+function loadChat(id){
+  const all = JSON.parse(localStorage.getItem('groqChats') || '[]');
+  const chat = all.find(c=>c.id===id);
+  if (!chat){ return; }
+  currentChatId = chat.id;
+  messages = chat.messages || [];
+  chatlog.innerHTML='';
+  for (const m of messages) addMessage(m.role, m.content);
+  renderChats();
+}
+function saveChat(){
+  const all = JSON.parse(localStorage.getItem('groqChats') || '[]');
+  const idx = all.findIndex(c=>c.id===currentChatId);
+  const title = messages.find(m=>m.role==='user')?.content?.slice(0,48) || 'New chat';
+  const record = { id: currentChatId, title, messages };
+  if (idx>=0) all[idx]=record; else all.push(record);
+  localStorage.setItem('groqChats', JSON.stringify(all));
+  renderChats();
+}
+newChatBtn.onclick = ()=>{
+  currentChatId = 'c_'+Math.random().toString(36).slice(2);
+  messages = [];
+  chatlog.innerHTML='';
+  saveChat();
+};
+delChatBtn.onclick = ()=>{
+  if (!currentChatId) return;
+  let all = JSON.parse(localStorage.getItem('groqChats') || '[]');
+  all = all.filter(c=>c.id!==currentChatId);
+  localStorage.setItem('groqChats', JSON.stringify(all));
+  currentChatId = null; chatlog.innerHTML=''; renderChats();
+};
+
+function addMessage(role, text){
+  const div = document.createElement('div');
+  div.className = 'message ' + role;
+  div.innerHTML = `<div class="meta">${role}</div>${escapeHtml(text)}`;
+  chatlog.appendChild(div);
+  chatlog.scrollTop = chatlog.scrollHeight;
+  return div;
+}
+function escapeHtml(s){return s.replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+
+async function sendPrompt(text){
+  if (!text.trim()) return;
+  if (!currentChatId){ newChatBtn.click(); }
+  addMessage('user', text);
+  messages.push({ role:'user', content:text });
+  saveChat();
+  promptEl.value='';
+  const thinking = addMessage('assistant','…thinking');
+
+  controller = new AbortController();
+  try{
+    const resp = await fetch('/api/chat', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ messages, model: modelEl.value }),
+      signal: controller.signal
+    }).then(r=>r.json());
+    if (resp.error){ throw new Error(resp.error); }
+    const out = resp.text || '';
+    thinking.innerHTML = `<div class="meta">assistant</div>${escapeHtml(out)}`;
+    messages.push({ role:'assistant', content: out });
+    saveChat();
+
+    if (talkModeSel.value === 'on' && out){
+      try{
+        const t = await fetch('/api/tts', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ text: out, voice: voiceSel.value })
+        });
+        const buf = await t.arrayBuffer();
+        const url = URL.createObjectURL(new Blob([buf], {type:'audio/wav'}));
+        const a = document.createElement('audio'); a.controls=true; a.src=url;
+        chatlog.appendChild(a); chatlog.scrollTop = chatlog.scrollHeight; a.play().catch(()=>{});
+      }catch(e){ addMessage('assistant', 'TTS failed'); }
+    }
+  }catch(e){
+    thinking.innerHTML = `<div class="meta">assistant</div><span style="color:#ff8a8a">Error:</span> ${escapeHtml(e.message)}`;
+  }finally{
+    controller = null;
+  }
+}
+sendBtn.onclick = ()=>sendPrompt(promptEl.value);
+promptEl.onkeydown = (e)=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendPrompt(promptEl.value);} };
+
+// Mic -> STT
+let recording=false, micRecorder=null, micStream=null, micChunks=[];
+micBtn.addEventListener('mousedown', startRec);
+micBtn.addEventListener('touchstart', e=>{e.preventDefault(); startRec();});
+window.addEventListener('mouseup', stopRec);
+window.addEventListener('touchend', stopRec);
+micBtn.addEventListener('click', ()=>{ if(!recording) startRec(); else stopRec(); });
+
+async function startRec(){
+  if(recording) return;
+  try{
+    micStream = await navigator.mediaDevices.getUserMedia({audio:true});
+    micRecorder = new MediaRecorder(micStream, { mimeType: 'audio/webm' });
+    micChunks = [];
+    micRecorder.ondataavailable = e => micChunks.push(e.data);
+    micRecorder.onstop = async ()=>{
+      const blob = new Blob(micChunks, { type:'audio/webm' });
+      const form = new FormData(); form.append('audio', blob, 'input.webm');
+      const r = await fetch('/api/stt', { method:'POST', body: form }).then(r=>r.json()).catch(e=>({error:String(e)}));
+      if (r?.text){ promptEl.value = (promptEl.value?promptEl.value+' ':'') + r.text; }
+      if (micStream) micStream.getTracks().forEach(t=>t.stop());
+    };
+    micRecorder.start();
+    recording=true; micBtn.classList.add('mic','rec'); micBtn.textContent='⏺️';
+  }catch(e){ addMessage('assistant', 'Mic error: '+e.message); }
+}
+function stopRec(){
+  if(!recording) return;
+  recording=false; micBtn.classList.remove('rec'); micBtn.textContent='🎙️';
+  if (micRecorder && micRecorder.state!=='inactive') micRecorder.stop();
+}
+
+// Web viewer on-demand
+goBtn.onclick = async ()=>{
+  const url = urlEl.value.trim();
+  if(!/^https?:\/\//i.test(url)){ status('Enter a full https:// URL'); return; }
+  viewer.src = url;
+  status('Loading…');
+  try{
+    const data = await fetch('/api/fetch', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ url, userAgent: uaEl.value, summarize: true })
+    }).then(r=>r.json());
+    if (data?.error){ status('Fetch error: '+data.error); return; }
+    let text = data.about || `ABOUT: ${data.title||'(no title)'}\nKEY POINTS:\n- ${data.desc||'No meta description'}`;
+    addMessage('assistant', text);
+  }catch(e){ status('Fetch failed: '+e.message); }
+};
+function status(t){ statusEl.textContent = t; setTimeout(()=>statusEl.textContent='',4000); }
+
+stopTaskBtn.onclick = ()=>{
+  if (controller) { controller.abort(); status('Stopped.'); }
+  if (recStream) { recStream.getTracks().forEach(t=>t.stop()); recStream=null; status('Recording stopped.'); }
+};
+
+// Tab recording
+document.getElementById('record').onclick = async ()=>{
+  try{
+    recStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    const rec = new MediaRecorder(recStream, { mimeType: 'video/webm' });
+    const chunks = [];
+    rec.ondataavailable = e=>chunks.push(e.data);
+    rec.onstop = ()=>{
+      const url = URL.createObjectURL(new Blob(chunks, {type:'video/webm'}));
+      const a = document.createElement('a'); a.href=url; a.download='session.webm'; a.click();
+      status('Recording saved as session.webm');
+    };
+    rec.start(); status('Recording… Click Stop to end.');
+  }catch(e){ status('Record error: '+e.message); }
+};
+
+// Exec (owner)
+runCmdBtn.onclick = async ()=>{
+  const password = ownerPassEl.value || ownerPasswordSetting.value || '';
+  const command = cmdEl.value;
+  const r = await fetch('/api/exec', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password, command }) }).then(r=>r.json()).catch(e=>({error:String(e)}));
+  if (r?.error) cmdOut.textContent = 'Error: '+r.error + (r.details?(' -> '+JSON.stringify(r.details)):'');
+  else cmdOut.textContent = (r.stdout||'') + (r.stderr?('\\n[stderr]\\n'+r.stderr):'');
+};
+
+// Self-edit (owner)
+saveFileBtn.onclick = async ()=>{
+  const password = ownerPassEl.value || ownerPasswordSetting.value || '';
+  const filename = (editFileEl.value||'').trim();
+  if (!filename){ cmdOut.textContent='Enter filename: server.js or index.html'; return; }
+  const existing = filename==='server.js' ? await (await fetch('server.js')).text().catch(()=>null)
+                   : filename==='index.html' ? await (await fetch('index.html')).text().catch(()=>null)
+                   : null;
+  const content = prompt('Paste new contents for '+filename, existing||'');
+  if (content==null) return;
+  const r = await fetch('/api/self-edit', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password, filename, content }) }).then(r=>r.json()).catch(e=>({error:String(e)}));
+  if (r?.ok){ cmdOut.textContent = filename+' saved. Restart server to apply.'; }
+  else cmdOut.textContent = 'Save error: '+(r?.error||'unknown');
+};
+
+// Stop server (owner)
+stopServerBtn.onclick = async ()=>{
+  const password = ownerPassEl.value || ownerPasswordSetting.value || '';
+  await fetch('/api/stop', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password }) });
+  status('Stopping…');
+};
+
+openSettings.onclick = ()=>{ settingsModal.style.display='flex'; };
+closeSettings.onclick = ()=>{ settingsModal.style.display='none'; saveSettings(); };
+testTTS.onclick = async ()=>{
+  saveSettings();
+  const sample = `Hi! This is ${voiceSel.value} speaking from Groq TTS.`;
+  const r = await fetch('/api/tts', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ text: sample, voice: voiceSel.value })});
+  const buf = await r.arrayBuffer();
+  const url = URL.createObjectURL(new Blob([buf], {type:'audio/wav'}));
+  const a = new Audio(url); a.play().catch(()=>{});
+};
+</script>
+</body>
+</html>
