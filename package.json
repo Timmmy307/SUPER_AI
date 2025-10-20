@@ -1,6 +1,6 @@
 {
-  "name": "groq-talk-mode-node-v3",
-  "version": "3.0.0",
+  "name": "groq-talk-mode-node-v4",
+  "version": "4.0.0",
   "private": true,
   "type": "module",
   "main": "server.js",
