@@ -251,7 +251,4 @@ app.post('/api/stop', (req,res)=>{
 // 404
 app.use((req,res)=>res.status(404).json({ error:'not_found' }));
 
-app.listen(PORT, ()=>{
-  console.log(`Server listening on http://localhost:${PORT}`);
-  if (!GROQ_API_KEY) console.log('NOTE: Set GROQ_API_KEY to use chat/STT/TTS.');
-});
+app.listen(process.env.PORT || 8000, ()=>console.log('Server up'));
